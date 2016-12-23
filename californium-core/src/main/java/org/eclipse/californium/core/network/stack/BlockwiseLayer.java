@@ -28,15 +28,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.eclipse.californium.core.coap.BlockOption;
+import org.eclipse.californium.core.coap.CoAP.Code;
+import org.eclipse.californium.core.coap.CoAP.ResponseCode;
+import org.eclipse.californium.core.coap.CoAP.Type;
 import org.eclipse.californium.core.coap.EmptyMessage;
 import org.eclipse.californium.core.coap.Message;
 import org.eclipse.californium.core.coap.MessageObserverAdapter;
 import org.eclipse.californium.core.coap.OptionSet;
 import org.eclipse.californium.core.coap.Request;
 import org.eclipse.californium.core.coap.Response;
-import org.eclipse.californium.core.coap.CoAP.Code;
-import org.eclipse.californium.core.coap.CoAP.ResponseCode;
-import org.eclipse.californium.core.coap.CoAP.Type;
 import org.eclipse.californium.core.network.Exchange;
 import org.eclipse.californium.core.network.config.NetworkConfig;
 import org.eclipse.californium.core.network.config.NetworkConfigObserverAdapter;
@@ -317,6 +317,13 @@ public class BlockwiseLayer extends AbstractLayer {
 		}
 
 		if (!response.getOptions().hasBlock1() && !response.getOptions().hasBlock2()) {
+
+			if (response.getOptions().hasObserve() && exchange.getResponseBlockStatus() != null
+					&& exchange.getResponseBlockStatus().getObserve() != BlockwiseStatus.NO_OBSERVE
+					&& exchange.getResponseBlockStatus().getObserve() < response.getOptions().getObserve()) {
+				exchange.setComplete();
+				exchange.setCurrentRequest(exchange.getRequest());
+			}
 			// There is no block1 or block2 option, therefore it is a normal response
 			exchange.setResponse(response);
 			super.receiveResponse(exchange, response);
