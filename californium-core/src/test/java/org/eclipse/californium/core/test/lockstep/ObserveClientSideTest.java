@@ -23,14 +23,8 @@ package org.eclipse.californium.core.test.lockstep;
 
 import static org.eclipse.californium.core.coap.CoAP.Code.GET;
 import static org.eclipse.californium.core.coap.CoAP.ResponseCode.CONTENT;
-import static org.eclipse.californium.core.coap.CoAP.Type.ACK;
-import static org.eclipse.californium.core.coap.CoAP.Type.CON;
-import static org.eclipse.californium.core.coap.CoAP.Type.RST;
-import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.assertResponseContainsExpectedPayload;
-import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.createLockstepEndpoint;
-import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.createRequest;
-import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.generateRandomPayload;
-import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.printServerLog;
+import static org.eclipse.californium.core.coap.CoAP.Type.*;
+import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.*;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -267,5 +261,71 @@ public class ObserveClientSideTest {
 		printServerLog(clientInterceptor);
 
 		Assert.assertNull("Client received notification although canceled", notification);
+	}
+
+	/**
+	 * Verifies behavior of observing a resource which start a blockwise
+	 * transfer and receiving a notification without blockwise at the same time.
+	 * 
+	 * @throws Exception
+	 */
+	@Test
+	public void testBlockwiseObserveAndNotificationWithoutBlockwise() throws Exception {
+		System.out.println("Blockwise Observe:");
+		// observer request response will be sent using blockwise
+		respPayload = generateRandomPayload(25 * 1024);
+		// notification payload sended without blockwise
+		String notifpayload = generateRandomPayload(40);
+		String path = "test";
+
+		Request request = createRequest(GET, path, server);
+		request.setObserve();
+		SynchronousNotificationListener notificationListener = new SynchronousNotificationListener(request);
+		client.addNotificationListener(notificationListener);
+
+		// Send observe request
+		client.sendRequest(request);
+
+		// Expect observe request
+		server.expectRequest(CON, GET, path).storeMID("OBS_REQ").storeToken("OBS_TOK").go();
+		// Send complete response and blockwise response at the same time \o/ !!
+		server.sendEmpty(ACK).loadMID("OBS_REQ").go();
+		int mid_block = 111;
+		server.sendResponse(CON, CONTENT).loadToken("OBS_TOK").observe(1).mid(mid_block).block2(0, true, 1024)
+				.payload(respPayload.substring(0, 1024)).go();
+		int mid_notif = 222;
+		server.sendResponse(CON, CONTENT).loadToken("OBS_TOK").observe(2).mid(mid_notif)
+				.payload(notifpayload)
+				.go();
+
+		// Expect for block request and ACKs
+		server.expectEmpty(ACK, mid_block).go();
+		server.expectRequest(CON, GET, path).storeMID("BLOCK_TOK").storeToken("SECOND_BLOCK").block2(1, false, 1024)
+				.go();
+		server.expectEmpty(ACK, mid_notif).go();
+
+		// Send next block
+		server.sendResponse(ACK, CONTENT).loadMID("BLOCK_TOK").loadToken("SECOND_BLOCK").block2(1, true, 1024)
+				.payload(respPayload.substring(1024, 2048)).go();
+
+		// Check that we get the most recent response (with the higher observe
+		// option value)
+		Response response = request.waitForResponse();
+		assertResponseContainsExpectedPayload(response, notifpayload);
+
+
+		// Send new notif without block
+		notifpayload = generateRandomPayload(40);
+		server.sendResponse(CON, CONTENT).loadToken("OBS_TOK").observe(3).mid(++mid_notif)
+				.payload(notifpayload).go();
+		response = notificationListener.waitForResponse(1000);
+		assertResponseContainsExpectedPayload(response, notifpayload);
+
+		// Send new notif without block
+		server.sendResponse(CON, CONTENT).loadToken("OBS_TOK").observe(4).mid(++mid_notif).payload(notifpayload).go();
+		response = notificationListener.waitForResponse(1000);
+		assertResponseContainsExpectedPayload(response, notifpayload);
+
+		printServerLog(clientInterceptor);
 	}
 }
