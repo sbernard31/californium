@@ -209,4 +209,6 @@ public interface MessageExchangeStore {
 	 * @param keyToken the KeyToken to release.
 	 */
 	void releaseToken(KeyToken keyToken);
+
+	void registerInboundResponse(Exchange exchange);
 }

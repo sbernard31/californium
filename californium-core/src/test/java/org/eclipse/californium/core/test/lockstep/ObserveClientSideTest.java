@@ -21,15 +21,12 @@
  ******************************************************************************/
 package org.eclipse.californium.core.test.lockstep;
 
-import static org.eclipse.californium.TestTools.*;
+import static org.eclipse.californium.TestTools.generateRandomPayload;
 import static org.eclipse.californium.core.coap.CoAP.Code.GET;
 import static org.eclipse.californium.core.coap.CoAP.ResponseCode.CONTENT;
-import static org.eclipse.californium.core.coap.CoAP.Type.ACK;
-import static org.eclipse.californium.core.coap.CoAP.Type.CON;
-import static org.eclipse.californium.core.coap.CoAP.Type.RST;
+import static org.eclipse.californium.core.coap.CoAP.Type.*;
 import static org.eclipse.californium.core.test.lockstep.IntegrationTestTools.*;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
 
 import java.net.InetAddress;
@@ -264,7 +261,9 @@ public class ObserveClientSideTest {
 		// old block from notification 4 transfer
 		clientInterceptor.log(System.lineSeparator() + "//////// Conflicting notification block ////////");
 		// this block should be discarded by client
-		server.sendResponse(ACK, CONTENT).loadBoth("F").block2(1, true, 16).payload(respPayload.substring(16, 32)).go();
+		String substring = respPayload.substring(16, 32);
+		System.out.println(substring);
+		server.sendResponse(ACK, CONTENT).loadBoth("F").block2(1, true, 16).payload(substring).go();
 
 		// new block
 		server.sendResponse(ACK, CONTENT).loadBoth("G").block2(1, true, 16).payload(respPayload4.substring(16, 32)).go();

@@ -248,6 +248,19 @@ public class InMemoryMessageExchangeStore implements MessageExchangeStore {
 	}
 
 	@Override
+	public void registerInboundResponse(final Exchange exchange) {
+
+		if (exchange == null) {
+			throw new NullPointerException("exchange must not be null");
+		} else if (exchange.getCurrentRequest() == null) {
+			throw new IllegalArgumentException("exchange does not contain a request");
+		} else {
+			// registerWithMessageId(exchange, exchange.getResponse());
+			registerWithToken(exchange);
+		}
+	}
+
+	@Override
 	public boolean registerOutboundRequestWithTokenOnly(final Exchange exchange) {
 		if (exchange == null) {
 			throw new NullPointerException("exchange must not be null");
@@ -398,6 +411,7 @@ public class InMemoryMessageExchangeStore implements MessageExchangeStore {
 	public List<Exchange> findByToken(byte[] token) {
 		List<Exchange> result = new ArrayList<>();
 		if (token != null) {
+			System.out.println("=====================");
 			for (Entry<KeyToken, Exchange> entry : exchangesByToken.entrySet()) {
 				if (entry.getValue().isOfLocalOrigin()) {
 					Request request = entry.getValue().getRequest();
@@ -405,7 +419,9 @@ public class InMemoryMessageExchangeStore implements MessageExchangeStore {
 						result.add(entry.getValue());
 					}
 				}
+				System.out.println(entry.getValue().getRequest().getTokenString());
 			}
+			System.out.println("=====================");
 		}
 		return result;
 	}

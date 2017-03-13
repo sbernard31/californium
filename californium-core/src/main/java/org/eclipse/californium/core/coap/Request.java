@@ -515,6 +515,7 @@ public class Request extends Message {
 	 */
 	public void setResponse(Response response) {
 		this.response = response;
+		System.out.println("set response " + response);
 
 		// only for synchronous/blocking requests
 		if (lock != null) {

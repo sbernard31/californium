@@ -292,13 +292,14 @@ public final class UdpMatcher extends BaseMatcher {
 
 		@Override
 		public void completed(final Exchange exchange) {
-
 			/*
 			 * Logging in this method leads to significant performance loss.
 			 * Uncomment logging code only for debugging purposes.
 			 */
 
 			if (exchange.getOrigin() == Origin.LOCAL) {
+
+				System.out.println("complete " + exchange.getCurrentRequest());
 				// this endpoint created the Exchange by issuing a request
 
 				Request originRequest = exchange.getCurrentRequest();

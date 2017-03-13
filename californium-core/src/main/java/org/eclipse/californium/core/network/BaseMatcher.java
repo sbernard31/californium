@@ -23,6 +23,7 @@ package org.eclipse.californium.core.network;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.eclipse.californium.core.Utils;
 import org.eclipse.californium.core.coap.MessageObserverAdapter;
 import org.eclipse.californium.core.coap.Request;
 import org.eclipse.californium.core.coap.Response;
@@ -228,6 +229,10 @@ public abstract class BaseMatcher implements Matcher {
 					exchangeStore.releaseToken(idByToken);
 				}
 			});
+			exchange.setResponse(response);
+			exchangeStore.registerInboundResponse(exchange);
+		} else {
+			System.out.println("match from exchangeStore");
 		}
 
 		return exchange;
@@ -242,9 +247,11 @@ public abstract class BaseMatcher implements Matcher {
 	 */
 	@Override
 	public void cancelObserve(final byte[] token) {
+		System.out.println("cancel " + Utils.toHexString(token));
 		// we do not know the destination endpoint the requests have been sent
 		// to therefore we need to find them by token only
 		for (Exchange exchange : exchangeStore.findByToken(token)) {
+			System.out.println(" CCCCCCCCCCAAAAAAAAANCELLLLLLLLl " + exchange.getRequest());
 			exchange.getRequest().cancel();
 			KeyToken idByToken = KeyToken.fromOutboundMessage(exchange.getCurrentRequest());
 			exchangeStore.releaseToken(idByToken);

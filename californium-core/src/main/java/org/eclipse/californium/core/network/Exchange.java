@@ -99,7 +99,7 @@ public class Exchange {
 	 * {@link BlockwiseLayer} should only work with the {@link #currentRequest}
 	 * while layers above should work with the {@link #request}.
 	 */
-	private Request request; // the initial request we have to exchange
+	// private Request request; // the initial request we have to exchange
 
 	/**
 	 * The current block of the request that is being processed. This is a single
@@ -183,9 +183,9 @@ public class Exchange {
 	 */
 	public void sendAccept() {
 		assert(origin == Origin.REMOTE);
-		if (request.getType() == Type.CON && !request.isAcknowledged()) {
-			request.setAcknowledged(true);
-			EmptyMessage ack = EmptyMessage.newACK(request);
+		if (currentRequest.getType() == Type.CON && !currentRequest.isAcknowledged()) {
+			currentRequest.setAcknowledged(true);
+			EmptyMessage ack = EmptyMessage.newACK(currentRequest);
 			endpoint.sendEmptyMessage(this, ack);
 		}
 	}
@@ -196,8 +196,8 @@ public class Exchange {
 	 */
 	public void sendReject() {
 		assert(origin == Origin.REMOTE);
-		request.setRejected(true);
-		EmptyMessage rst = EmptyMessage.newRST(request);
+		currentRequest.setRejected(true);
+		EmptyMessage rst = EmptyMessage.newRST(currentRequest);
 		endpoint.sendEmptyMessage(this, rst);
 	}
 
@@ -208,8 +208,8 @@ public class Exchange {
 	 * @param response the response
 	 */
 	public void sendResponse(Response response) {
-		response.setDestination(request.getSource());
-		response.setDestinationPort(request.getSourcePort());
+		response.setDestination(currentRequest.getSource());
+		response.setDestinationPort(currentRequest.getSourcePort());
 		setResponse(response);
 		endpoint.sendResponse(this, response);
 	}
@@ -231,7 +231,7 @@ public class Exchange {
 	 * @see #getCurrentRequest()
 	 */
 	public Request getRequest() {
-		return request;
+		return currentRequest;
 	}
 	
 	/**
@@ -241,7 +241,7 @@ public class Exchange {
 	 * @see #setCurrentRequest(Request)
 	 */
 	public void setRequest(Request request) {
-		this.request = request; // by blockwise layer
+		this.currentRequest = request; // by blockwise layer
 	}
 
 	/**

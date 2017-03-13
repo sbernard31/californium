@@ -163,4 +163,8 @@ final class Block1BlockwiseStatus extends BlockwiseStatus {
 	boolean hasMatchingToken(final Response response) {
 		return request != null && Arrays.equals(request.getToken(), response.getToken());
 	}
+
+	public Request getOriginalRequest() {
+		return request;
+	}
 }

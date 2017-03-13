@@ -38,6 +38,7 @@ import org.eclipse.californium.core.coap.OptionSet;
 import org.eclipse.californium.core.coap.Request;
 import org.eclipse.californium.core.coap.Response;
 import org.eclipse.californium.core.network.Exchange;
+import org.eclipse.californium.core.network.Exchange.Origin;
 import org.eclipse.californium.core.network.config.NetworkConfig;
 import org.eclipse.californium.elements.util.LeastRecentlyUsedCache;
 
@@ -180,9 +181,11 @@ public class BlockwiseLayer extends AbstractLayer {
 				// This must be a large POST or PUT request
 				requestToSend = startBlockwiseUpload(exchange, request);
 
+				Exchange e = new Exchange(requestToSend, Origin.LOCAL);
+				lower().sendRequest(e, requestToSend);
+				return;
 			}
 		}
-
 		exchange.setCurrentRequest(requestToSend);
 		lower().sendRequest(exchange, requestToSend);
 	}
@@ -334,7 +337,7 @@ public class BlockwiseLayer extends AbstractLayer {
 
 					Response piggybacked = Response.createResponse(request, ResponseCode.CONTINUE);
 					piggybacked.getOptions().setBlock1(block1.getSzx(), true, block1.getNum());
-					piggybacked.setLast(false);
+					// piggybacked.setLast(false);
 
 					exchange.setCurrentResponse(piggybacked);
 					lower().sendResponse(exchange, piggybacked);
@@ -523,6 +526,7 @@ public class BlockwiseLayer extends AbstractLayer {
 		if (isTransparentBlockwiseHandlingEnabled()) {
 
 			if (response.isError()) {
+				Block1BlockwiseStatus status = null;
 				// handle blockwise specific error codes
 				switch(response.getCode()) {
 				case REQUEST_ENTITY_INCOMPLETE: // 4.08
@@ -530,6 +534,7 @@ public class BlockwiseLayer extends AbstractLayer {
 				case REQUEST_ENTITY_TOO_LARGE: // 4.13
 					// server is not able to process the payload we included
 					KeyUri key = getKey(exchange, exchange.getCurrentRequest());
+					status = getBlock1Status(key);
 					clearBlock1Status(key);
 				default:
 					Response resp = new Response(response.getCode());
@@ -544,15 +549,33 @@ public class BlockwiseLayer extends AbstractLayer {
 					resp.setSourcePort(response.getSourcePort());
 					resp.setPayload(response.getPayload());
 					resp.setOptions(response.getOptions());
-					exchange.setResponse(resp);
-					upper().receiveResponse(exchange, resp);
+					System.out.println("error");
+					if (status != null) {
+						System.out.println("error2");
+						Exchange e = new Exchange(status.getOriginalRequest(), Origin.LOCAL);
+						// Set the assembled response as current response
+						e.setResponse(resp);
+						upper().receiveResponse(e, resp);
+					} else {
+						exchange.setResponse(resp);
+						upper().receiveResponse(exchange, resp);
+					}
 				}
 			} else if (!response.hasBlockOption()) {
 
 				// This is a normal response, no special treatment necessary
-				exchange.setResponse(response);
-				upper().receiveResponse(exchange, response);
-
+				KeyUri key = getKey(exchange, exchange.getCurrentRequest());
+				Block1BlockwiseStatus status = getBlock1Status(key);
+				if (status != null) {
+					System.out.println("error2");
+					Exchange e = new Exchange(status.getOriginalRequest(), Origin.LOCAL);
+					// Set the assembled response as current response
+					e.setResponse(response);
+					upper().receiveResponse(e, response);
+				} else {
+					exchange.setResponse(response);
+					upper().receiveResponse(exchange, response);
+				}
 			} else {
 
 				if (response.getOptions().hasBlock1()) {
@@ -613,6 +636,7 @@ public class BlockwiseLayer extends AbstractLayer {
 					if (response.getCode() == ResponseCode.CONTINUE) {
 						// server wants us to send the remaining blocks before returning
 						// its response
+						exchange.setComplete();
 						sendNextBlock(exchange, response, key, status);
 					} else {
 						// the server has responded in a way that is not compliant with RFC 7959
@@ -632,6 +656,7 @@ public class BlockwiseLayer extends AbstractLayer {
 					// to keep track of this POST/PUT request
 					// we therefore go on sending all pending blocks and then return the
 					// response received for the last block
+					exchange.setComplete();
 					sendNextBlock(exchange, response, key, status);
 				}
 
@@ -641,12 +666,16 @@ public class BlockwiseLayer extends AbstractLayer {
 				clearBlock1Status(key);
 
 				if (response.getOptions().hasBlock2()) {
+					exchange.setComplete();
+					exchange.setRequest(status.getOriginalRequest());
 					LOGGER.finer("Block1 followed by Block2 transfer");
 				} else {
 					// All request blocks have been acknowledged and we have received a
 					// response that does not need blockwise transfer. Thus, deliver it.
-					exchange.setResponse(response);
-					upper().receiveResponse(exchange, response);
+					exchange.setComplete();
+					Exchange e = new Exchange(status.getOriginalRequest(), Origin.LOCAL);
+					e.setResponse(response);
+					upper().receiveResponse(e, response);
 				}
 			}
 		}
@@ -672,8 +701,8 @@ public class BlockwiseLayer extends AbstractLayer {
 		nextBlock.setToken(response.getToken());
 		addBlock1CleanUpObserver(nextBlock, key);
 
-		exchange.setCurrentRequest(nextBlock);
-		lower().sendRequest(exchange, nextBlock);
+		Exchange e = new Exchange(nextBlock, Origin.LOCAL);
+		lower().sendRequest(e, nextBlock);
 	}
 
 	/**
@@ -720,6 +749,7 @@ public class BlockwiseLayer extends AbstractLayer {
 					if (response.getOptions().getObserve() > status.getObserve()) {
 						status = resetInboundBlock2Status(key, exchange, response);
 					} else {
+						exchange.setComplete();
 						LOGGER.log(
 								Level.FINER,
 								"discarding old notification [{0}] received during ongoing blockwise transfer: {1}",
@@ -746,6 +776,7 @@ public class BlockwiseLayer extends AbstractLayer {
 
 				if (exchange.getNotificationNumber() != null && exchange.getNotificationNumber() != status.getObserve()) {
 
+					exchange.setComplete();
 					// we are processing a "delayed" response to a block2 request issued for a previous notification
 					// this may happen if the peer sends a new notification before the blockwise transfer has finished
 					LOGGER.log(
@@ -787,9 +818,9 @@ public class BlockwiseLayer extends AbstractLayer {
 						}
 						int nextNum = status.getCurrentNum() + currentSize / newSize;
 
-						Request request = exchange.getRequest();
+						Request request = status.getOriginalRequest();
 
-						Request block = new Request(request.getCode());
+						final Request block = new Request(request.getCode());
 						// do not enforce CON, since NON could make sense over SMS or similar transports
 						block.setType(request.getType());
 						block.setDestination(request.getDestination());
@@ -824,12 +855,60 @@ public class BlockwiseLayer extends AbstractLayer {
 						// block request fails
 						addBlock2CleanUpObserver(block, key);
 
+						// if (status.getCurrentNum() != 0) {
+						exchange.setComplete();
+						// }
+						Exchange e = new Exchange(block, Origin.LOCAL);
+						if (exchange.getNotificationNumber() != null) {
+							e.setNotificationNumber(exchange.getNotificationNumber());
+						}
 						status.setCurrentNum(nextNum);
 
-						LOGGER.log(Level.FINER, "requesting next Block2 [num={0}]: {1}", new Object[]{ nextNum, block });
-						exchange.setCurrentRequest(block);
-						lower().sendRequest(exchange, block);
+						LOGGER.log(Level.FINER, "requesting next Block2 [num={0}]: {1}",
+								new Object[] { nextNum, block });
 
+						status.getOriginalRequest().addMessageObserver(new MessageObserver() {
+
+							@Override
+							public void onTimeout() {
+								// TODO Auto-generated method stub
+
+							}
+
+							@Override
+							public void onRetransmission() {
+								// TODO Auto-generated method stub
+
+							}
+
+							@Override
+							public void onResponse(Response response) {
+								// TODO Auto-generated method stub
+
+							}
+
+							@Override
+							public void onReject() {
+								// TODO Auto-generated method stub
+
+							}
+
+							@Override
+							public void onCancel() {
+								block.cancel();
+							}
+
+							@Override
+							public void onAcknowledgement() {
+								// TODO Auto-generated method stub
+
+							}
+						});
+
+						e.setCurrentRequest(block);
+						lower().sendRequest(e, block);
+
+						
 					} else {
 
 						// we have received the last block of the block2 transfer
@@ -847,12 +926,14 @@ public class BlockwiseLayer extends AbstractLayer {
 						if (status.isNotification()) {
 
 							/*
-							 * When retrieving the rest of a blockwise notification
-							 * with a different token, the additional Matcher state
-							 * must be cleaned up through the call below.
+							 * When retrieving the rest of a blockwise
+							 * notification with a different token, the
+							 * additional Matcher state must be cleaned up
+							 * through the call below.
 							 */
 							if (!response.getOptions().hasObserve()) {
-								// call the clean-up mechanism for the additional Matcher entry in exchangesByToken
+								// call the clean-up mechanism for the
+								// additional Matcher entry in exchangesByToken
 								exchange.completeCurrentRequest();
 							}
 						}
@@ -862,10 +943,15 @@ public class BlockwiseLayer extends AbstractLayer {
 						// Set the original request as current request so that
 						// the Matcher can clean up its state based on the latest
 						// ("current") request's MID and token
-						exchange.setCurrentRequest(exchange.getRequest());
+						exchange.setComplete();
+
+						Exchange e = new Exchange(status.getOriginalRequest(), Origin.LOCAL);
+						if (exchange.getNotificationNumber() != null) {
+							e.setNotificationNumber(exchange.getNotificationNumber());
+						}
 						// Set the assembled response as current response
-						exchange.setResponse(assembled);
-						upper().receiveResponse(exchange, assembled);
+						e.setResponse(assembled);
+						upper().receiveResponse(e, assembled);
 					}
 
 				} else {
@@ -948,6 +1034,8 @@ public class BlockwiseLayer extends AbstractLayer {
 				block2Transfers.put(key, status);
 				LOGGER.log(Level.FINE, "created tracker for outbound block2 transfer {0}, transfers in progress: {1}",
 						new Object[]{ status, block2Transfers.size() });
+			} else {
+				System.out.println("already block for" + key);
 			}
 			// we register a clean up task in case the peer does not retrieve all blocks
 			prepareBlock2Cleanup(status, key);

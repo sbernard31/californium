@@ -35,6 +35,7 @@ final class Block2BlockwiseStatus extends BlockwiseStatus {
 
 	private static final Logger LOGGER = Logger.getLogger(Block2BlockwiseStatus.class.getName());
 
+	private Request originalRequest;
 	private Response response;
 	private byte[] etag;
 
@@ -54,6 +55,8 @@ final class Block2BlockwiseStatus extends BlockwiseStatus {
 	 */
 	static Block2BlockwiseStatus forOutboundResponse(final Exchange exchange, final Response response, final int preferredBlockSize) {
 		Block2BlockwiseStatus status = new Block2BlockwiseStatus(response.getPayloadSize(), response.getOptions().getContentFormat());
+		status.originalRequest = exchange.getRequest();
+		System.out.println("original req " + status.originalRequest);
 		status.response = response;
 		status.buf.put(response.getPayload());
 		status.buf.flip();
@@ -79,6 +82,7 @@ final class Block2BlockwiseStatus extends BlockwiseStatus {
 			bufferSize = block.getOptions().getSize2();
 		}
 		Block2BlockwiseStatus status = new Block2BlockwiseStatus(bufferSize, contentFormat);
+		status.originalRequest = exchange.getRequest();
 		status.setFirst(block);
 		Integer observeCount = block.getOptions().getObserve();
 		if (observeCount != null && OptionSet.isValidObserveOption(observeCount)) {
@@ -319,5 +323,9 @@ final class Block2BlockwiseStatus extends BlockwiseStatus {
 			System.arraycopy(responseToCrop.getPayload(), from, blockPayload, 0, length);
 			responseToCrop.setPayload(blockPayload);
 		}
+	}
+
+	public Request getOriginalRequest() {
+		return originalRequest;
 	}
 }
